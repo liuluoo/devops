@@ -12,15 +12,13 @@ pipeline {
 
     environment {
         DOCKER_CREDENTIAL_ID = 'harbor-user-pass'
-        GIT_REPO_URL = '192.168.113.121:28080'
+        GIT_REPO_URL = '192.168.241.102:28080'
         GIT_CREDENTIAL_ID = 'git-user-pass'
-        GIT_ACCOUNT = 'gitlab-instance-1a76a240' // change me
-        KUBECONFIG_CREDENTIAL_ID = '546163de-4d55-40b9-9035-83b51d91260b'
-        REGISTRY = '192.168.113.122:8858'
-        DOCKERHUB_NAMESPACE = 'snapshots' // change me
+        GIT_ACCOUNT = 'root'
+        REGISTRY = 'liulu.harbor.com'
+        DOCKERHUB_NAMESPACE = 'devops' // change me
         APP_NAME = 'k8s-cicd-demo'
-        SONAR_CREDENTIAL_ID = 'sonarqube-token'
-    }
+         }
 
     stages {
 
@@ -36,18 +34,7 @@ pipeline {
             }
         }
 
-        stage('sonarqube analysis') {
-            steps {
-                withCredentials([string(credentialsId: "$SONAR_CREDENTIAL_ID", variable: 'SONAR_TOKEN')]) {
-                    withSonarQubeEnv('sonarqube') {
-                        sh 'mvn sonar:sonar -Dsonar.projectKey=$APP_NAME'
-                    }
-                }
-                timeout(time: 1, unit: 'HOURS') {
-                    waitForQualityGate abortPipeline: true
-                }
-            }
-        }
+
 
         stage('build & push') {
             steps {
