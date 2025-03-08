@@ -24,6 +24,11 @@ pipeline {
 
     stages {
 
+       stage('Clean Maven Cache') {
+          steps {
+                sh 'rm -rf ~/.m2/repository'
+         }
+       }.
 
         stage('unit 测试') {
             steps {
