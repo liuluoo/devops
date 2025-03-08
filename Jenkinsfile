@@ -25,7 +25,7 @@ pipeline {
     stages {
 
 
-        stage('unit test') {
+        stage('unit 测试') {
             steps {
                 sh 'mvn clean test'
             }
