@@ -28,7 +28,7 @@ pipeline {
           steps {
                 sh 'rm -rf ~/.m2/repository'
          }
-       }.
+       }
 
         stage('unit 测试') {
             steps {
