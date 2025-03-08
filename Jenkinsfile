@@ -15,20 +15,18 @@ pipeline {
         GIT_REPO_URL = '192.168.241.102:28080'
         GIT_CREDENTIAL_ID = 'git-user-pass'
         GIT_ACCOUNT = 'root'
-//         DOCKER_USERNAME = 'admin'
-//         DOCKER_PASSWORD = '123456'
         REGISTRY = 'liulu.harbor.com'
-        DOCKERHUB_NAMESPACE = 'devops' // change me
+        DOCKERHUB_NAMESPACE = 'devops'
         APP_NAME = 'k8s-cicd-demo'
-         }
+    }
 
     stages {
-
-       stage('Clean Maven Cache') {
-          steps {
+        // 确保 stage 语法正确，无多余符号
+        stage('Clean Maven Cache') {
+            steps {
                 sh 'rm -rf ~/.m2/repository'
-         }
-       }
+            }
+        }
 
         stage('unit 测试') {
             steps {
@@ -36,13 +34,11 @@ pipeline {
             }
         }
 
-
-
         stage('build & push') {
             steps {
-                sh 'mvn clean package '
+                sh 'mvn clean package'
                 sh 'docker build -f Dockerfile -t $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER .'
-                withCredentials([usernamePassword(passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME', credentialsId: "$DOCKER_CREDENTIAL_ID",)]) {
+                withCredentials([usernamePassword(passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME', credentialsId: "$DOCKER_CREDENTIAL_ID")]) {
                     sh 'echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin'
                     sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER'
                 }
@@ -68,6 +64,7 @@ pipeline {
                 '''
             }
         }
+
         stage('push with tag') {
             when {
                 expression {
@@ -77,15 +74,16 @@ pipeline {
             steps {
                 input(id: 'release-image-with-tag', message: 'release image with tag?')
                 withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                    sh 'git config --global user.email "liulu@git.cn" '
-                    sh 'git config --global user.name "liulu" '
-                    sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
+                    sh 'git config --global user.email "liulu@git.cn"'
+                    sh 'git config --global user.name "liulu"'
+                    sh 'git tag -a $TAG_NAME -m "$TAG_NAME"'
                     sh 'git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --tags --ipv4'
                 }
                 sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
                 sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
             }
         }
+
         stage('deploy to production') {
             when {
                 expression {
