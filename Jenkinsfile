@@ -15,6 +15,8 @@ pipeline {
         GIT_REPO_URL = '192.168.241.102:28080'
         GIT_CREDENTIAL_ID = 'git-user-pass'
         GIT_ACCOUNT = 'root'
+//         DOCKER_USERNAME = 'admin'
+//         DOCKER_PASSWORD = '123456'
         REGISTRY = 'liulu.harbor.com'
         DOCKERHUB_NAMESPACE = 'devops' // change me
         APP_NAME = 'k8s-cicd-demo'
@@ -33,7 +35,7 @@ pipeline {
 
         stage('build & push') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                sh 'mvn clean package '
                 sh 'docker build -f Dockerfile -t $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER .'
                 withCredentials([usernamePassword(passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME', credentialsId: "$DOCKER_CREDENTIAL_ID",)]) {
                     sh 'echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin'
@@ -70,8 +72,8 @@ pipeline {
             steps {
                 input(id: 'release-image-with-tag', message: 'release image with tag?')
                 withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                    sh 'git config --global user.email "liugang@wolfcode.cn" '
-                    sh 'git config --global user.name "xiaoliu" '
+                    sh 'git config --global user.email "liulu@git.cn" '
+                    sh 'git config --global user.name "liulu" '
                     sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
                     sh 'git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --tags --ipv4'
                 }

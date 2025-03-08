@@ -4,7 +4,7 @@ kind: Deployment
 metadata:
   labels:
     app: k8s-cicd-demo
-    component: wolfcode-devops
+    component: liulu-devops
     tier: backend
   name: k8s-cicd-demo
   namespace: k8s-cicd
@@ -14,7 +14,7 @@ spec:
   selector:
     matchLabels:
       app: k8s-cicd-demo
-      component: wolfcode-devops
+      component: liulu-devops
       tier: backend
   strategy:
     rollingUpdate:
@@ -62,7 +62,7 @@ kind: Service
 metadata:
   labels:
     app: k8s-cicd-demo
-    component: wolfcode-devops
+    component: liulu-devops
   name: k8s-cicd-demo
   namespace: k8s-cicd
 spec:
