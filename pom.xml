@@ -5,26 +5,27 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>2.7.9</version>
-        <relativePath/> <!-- lookup parent from repository -->
+        <version>3.2.5</version> <!-- 升级到 Spring Boot 3.2.x -->
+        <relativePath/>
     </parent>
 
     <groupId>cn.wolfcode</groupId>
     <artifactId>k8s-cicd-demo</artifactId>
     <version>1.0.0</version>
     <name>k8s-cicd-demo</name>
-
     <description>K8S CICD 演示项目</description>
 
     <properties>
-        <java.version>1.8</java.version>
+        <java.version>21</java.version> <!-- 使用 JDK 21 -->
+        <maven.compiler.plugin.version>3.14.0</maven.compiler.plugin.version>
+        <plexus.compiler.version>2.14.0</plexus.compiler.version>
     </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
@@ -39,6 +40,23 @@
 
     <build>
         <plugins>
+            <!-- 显式配置编译器插件 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.plugin.version}</version>
+                <configuration>
+                    <release>${java.version}</release>
+                    <fork>true</fork>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.codehaus.plexus</groupId>
+                        <artifactId>plexus-compiler-javac</artifactId>
+                        <version>${plexus.compiler.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
@@ -53,5 +71,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>
