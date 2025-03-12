@@ -6,8 +6,18 @@ pipeline {
     }
 
     parameters {
-        gitParameter name: 'BRANCH_NAME', branch: '', branchFilter: '.*', defaultValue: 'origin/master', description: '请选择要发布的分支', quickFilterEnabled: false, selectedValue: 'NONE', tagFilter: '*', type: 'PT_BRANCH'
-        string(name: 'TAG_NAME', defaultValue: 'snapshot', description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
+        gitParameter name: 'BRANCH_NAME',
+                     branch: '',
+                     branchFilter: '.*',
+                     defaultValue: 'origin/master',
+                     description: '请选择要发布的分支',
+                     quickFilterEnabled: false,
+                     selectedValue: 'NONE',
+                     tagFilter: '*',
+                     type: 'PT_BRANCH'
+        string(name: 'TAG_NAME',
+               defaultValue: 'snapshot',
+               description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
     }
 
     environment {
@@ -15,15 +25,21 @@ pipeline {
         GIT_REPO_URL = '192.168.241.102:28080'
         GIT_CREDENTIAL_ID = 'git-user-pass'
         GIT_ACCOUNT = 'root'
-//         DOCKER_USERNAME = 'admin'
-//         DOCKER_PASSWORD = '123456'
         REGISTRY = 'liulu.harbor.com'
-        DOCKERHUB_NAMESPACE = 'devops' // change me
+        DOCKERHUB_NAMESPACE = 'devops' // 根据实际修改
         APP_NAME = 'k8s-cicd-demo'
-         }
+    }
 
     stages {
-
+        // 新增：清理 Maven 缓存
+        stage('Clean Maven Cache') {
+            steps {
+                sh '''
+                    echo "清理 plexus-compiler 缓存..."
+                    rm -rf ~/.m2/repository/org/codehaus/plexus/plexus-compiler-*
+                '''
+            }
+        }
 
         stage('unit 测试') {
             steps {
@@ -31,19 +47,24 @@ pipeline {
             }
         }
 
-
-
         stage('build & push') {
             steps {
-                sh 'mvn clean package '
+                // 强制更新依赖并构建
+                sh 'mvn clean package -U'  // 添加 -U 参数
+
                 sh 'docker build -f Dockerfile -t $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER .'
-                withCredentials([usernamePassword(passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME', credentialsId: "$DOCKER_CREDENTIAL_ID",)]) {
+                withCredentials([usernamePassword(
+                    passwordVariable: 'DOCKER_PASSWORD',
+                    usernameVariable: 'DOCKER_USERNAME',
+                    credentialsId: "$DOCKER_CREDENTIAL_ID"
+                )]) {
                     sh 'echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin'
                     sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER'
                 }
             }
         }
 
+        // 其他阶段保持不变...
         stage('push latest') {
             steps {
                 sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:latest'
@@ -63,6 +84,7 @@ pipeline {
                 '''
             }
         }
+
         stage('push with tag') {
             when {
                 expression {
@@ -71,7 +93,11 @@ pipeline {
             }
             steps {
                 input(id: 'release-image-with-tag', message: 'release image with tag?')
-                withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: "$GIT_CREDENTIAL_ID",
+                    passwordVariable: 'GIT_PASSWORD',
+                    usernameVariable: 'GIT_USERNAME'
+                )]) {
                     sh 'git config --global user.email "liulu@git.cn" '
                     sh 'git config --global user.name "liulu" '
                     sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
@@ -81,6 +107,7 @@ pipeline {
                 sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
             }
         }
+
         stage('deploy to production') {
             when {
                 expression {
