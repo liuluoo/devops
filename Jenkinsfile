@@ -94,17 +94,18 @@ pipeline {
                     usernameVariable: 'GIT_USERNAME'
                 )]) {
                     // 配置 Git 用户信息
-                    sh 'git config --global user.email "liulu@git.cn" '
-                    sh 'git config --global user.name "liulu" '
+                    sh 'git config --global user.email "liulu@git.cn"'
+                    sh 'git config --global user.name "liulu"'
 
-                    // 删除已存在的本地标签
-                    sh 'git tag -d snapshot'
-
-                    // 删除已存在的远程标签
-                    sh "git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --delete snapshot"
+                    // 检查并删除已存在的本地标签
+                    sh '''
+                        if git tag --list | grep -q "snapshot"; then
+                            git tag -d snapshot
+                        fi
+                    '''
 
                     // 重新创建新的标签
-                    sh 'git tag -a snapshot -m "snapshot" '
+                    sh 'git tag -a snapshot -m "snapshot"'
 
                     // 推送新的标签到远程仓库
                     sh "git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git snapshot"
