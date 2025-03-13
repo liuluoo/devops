@@ -1,4 +1,4 @@
-package cn.wolfcode;
+package cn.liulu;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
