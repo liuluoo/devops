@@ -86,6 +86,11 @@ pipeline {
         }
 
         stage('push with tag') {
+            when {
+                expression {
+                    return params.TAG_NAME =~ /v.*/
+                }
+            }
             steps {
                 input(id: 'release-image-with-tag', message: 'release image with tag?')
                 withCredentials([usernamePassword(
@@ -104,6 +109,11 @@ pipeline {
         }
 
         stage('deploy to production') {
+            when {
+                expression {
+                    return params.TAG_NAME =~ /v.*/
+                }
+            }
             steps {
                 input(id: 'deploy-to-production', message: 'deploy to production?')
                 sh '''
