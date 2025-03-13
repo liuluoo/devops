@@ -86,7 +86,6 @@ pipeline {
         }
 
         stage('push with tag') {
-
             steps {
                 input(id: 'release-image-with-tag', message: 'release image with tag?')
                 withCredentials([usernamePassword(
@@ -105,7 +104,6 @@ pipeline {
         }
 
         stage('deploy to production') {
-            }
             steps {
                 input(id: 'deploy-to-production', message: 'deploy to production?')
                 sh '''
