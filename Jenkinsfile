@@ -88,7 +88,7 @@ pipeline {
         stage('push with tag') {
             when {
                 expression {
-                    return params.TAG_NAME =~ /v.*/
+                    return params.TAG_NAME =~ /S.*/
                 }
             }
             steps {
