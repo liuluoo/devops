@@ -37,9 +37,10 @@ spec:
             httpGet:
               path: /users
               port: 8080
-            timeoutSeconds: 300
-            failureThreshold: 30
+            initialDelaySeconds: 120
             periodSeconds: 30
+            timeoutSeconds: 60
+            failureThreshold: 30
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
