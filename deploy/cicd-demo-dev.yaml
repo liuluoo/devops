@@ -32,12 +32,12 @@ spec:
         - name: harbor-secret
       containers:
         - name: k8s-cicd-demo
-          image: REGISTRY/DOCKERHUB_NAMESPACE/APP_NAME:SNAPSHOT-BUILD_NUMBER
+          image: liulu.harbor.com/devops/k8s-cicd-demo:SNAPSHOT-20
           readinessProbe:
             httpGet:
               path: /users
               port: 8080
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
             timeoutSeconds: 60
             failureThreshold: 30
@@ -48,7 +48,7 @@ spec:
           resources:
             limits:
               cpu: 300m
-              memory: 1024Mi
+              memory: 1Gi
             requests:
               cpu: 100m
               memory: 512Mi
