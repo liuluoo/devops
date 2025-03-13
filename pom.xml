@@ -9,11 +9,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>cn.wolfcode</groupId>
+    <groupId>cn.liulu</groupId>
     <artifactId>k8s-cicd-demo</artifactId>
     <version>1.0.0</version>
     <name>k8s-cicd-demo</name>
-    <description>K8S CICD 演示项目</description>
+    <description>K8S CICD 项目</description>
 
     <properties>
         <java.version>21</java.version>
