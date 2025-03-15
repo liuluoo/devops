@@ -32,7 +32,7 @@ spec:
         - name: harbor-secret
       containers:
         - name: k8s-cicd-demo
-          image: liulu.harbor.com/devops/k8s-cicd-demo:SNAPSHOT-20
+          image: REGISTRY/DOCKERHUB_NAMESPACE/APP_NAME:TAG_NAME
           readinessProbe:
             httpGet:
               path: /users
