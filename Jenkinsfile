@@ -104,6 +104,9 @@ pipeline {
                         fi
                     '''
 
+                    // 删除远程标签
+                    sh "git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --delete snapshot"
+
                     // 重新创建新的标签
                     sh 'git tag -a snapshot -m "snapshot"'
 
