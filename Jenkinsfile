@@ -22,7 +22,7 @@ pipeline {
 
     environment {
         DOCKER_CREDENTIAL_ID = 'harbor-user-pass'
-        GIT_REPO_URL = '192.168.241.102:28080'
+        GIT_REPO_URL = 'liulu.gitlab.com'
         GIT_CREDENTIAL_ID = 'git-user-pass'
         GIT_ACCOUNT = 'root'
         REGISTRY = 'liulu.harbor.com'
@@ -64,7 +64,7 @@ pipeline {
             }
         }
 
-        // 其他阶段保持不变...
+
         stage('push latest') {
             steps {
                 sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:latest'
@@ -76,6 +76,7 @@ pipeline {
             steps {
                 input(id: 'deploy-to-dev', message: 'deploy to dev?')
                 sh '''
+                    kubectl create namespace dev-production
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo-dev.yaml
@@ -124,6 +125,7 @@ pipeline {
             steps {
                 input(id: 'deploy-to-production', message: 'deploy to production?')
                 sh '''
+                    kubectl create namespace devops-dev
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo.yaml
