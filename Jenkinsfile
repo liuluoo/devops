@@ -21,6 +21,7 @@ pipeline {
         // 定义命名空间变量
         DEV_NAMESPACE = 'devops-dev'
         PROD_NAMESPACE = 'devops-production'
+        KUBECONFIG_CREDENTIAL_ID  = 'k8s-cluster-config'
     }
 
     stages {
