@@ -13,7 +13,7 @@ pipeline {
     environment {
         DOCKER_CREDENTIAL_ID = 'harbor-user-pass'
         GIT_REPO_URL = 'liulu.gitlab.com'
-        GIT_CREDENTIAL_ID = 'git-user-pass'
+        GIT_CREDENTIAL_ID = 'gitlab-user-pass'
         GIT_ACCOUNT = 'root' // change me
         REGISTRY = 'liulu.harbor.com'
         DOCKERHUB_NAMESPACE = 'devops' // change me
@@ -85,7 +85,7 @@ pipeline {
             }
             steps {
                 sh '''
-                   
+
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo.yaml
