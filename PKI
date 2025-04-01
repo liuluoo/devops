@@ -1,0 +1,169 @@
+为了更好地模拟生产环境，隔离不同业务风险，我这里使用了更安全的三层自签名PKI结构，即根CA、中间CA和终端实体证书，用来签发我的下游服务。同时也能提高我对集群服务的证书管理
+
+```
+根 CA (Root CA) → 中间 CA (Intermediate CA) → 终端实体证书 (client ca)
+```
+
+环境说明：
+
+1. **隔离根 CA 环境**
+   根 CA 操作应在完全离线的物理机或虚拟机中进行，生成后私钥不再联网，防止泄露。
+
+2. **中间 CA 环境**
+   中间 CA 可在受控的内网服务器运行，私钥需加密存储。
+
+3. **终端证书签发环境**
+   在线签发服务器、用户或设备证书。
+
+   以下为我的证书目录结构
+
+   ```
+   ├── End-Entity-Certificate
+   │   ├── liulu.gitlab.com
+   │   ├── liulu.harbor.com
+   │   │   ├── chain.liulu.harbor.com.crt
+   │   │   ├── liulu.harbor.com.crt
+   │   │   ├── liulu.harbor.com.csr
+   │   │   ├── liulu.harbor.com.key
+   │   │   └── v3.ext
+   │   └── liulu.jenkins.com
+   ├── Intermediate
+   │   ├── intermediateCA-chain.crt
+   │   ├── intermediateCA.crt
+   │   ├── intermediateCA.csr
+   │   ├── intermediateCA.key
+   │   ├── intermediateCA.key_passwd
+   │   └── intermediateCA.srl
+   └── Root
+       ├── rootCA.crt
+       ├── rootCA.key
+       ├── rootca_passwd
+       └── rootCA.srl
+   ```
+
+
+
+### 步骤1：证书颁发机构
+
+```
+[root@controller tls]# openssl genrsa -aes256 -passout pass:MyRootPass123! \
+  -out root/private/root.key 4096
+```
+
+**生成加密的根 CA 私钥**:这里用了`-aes256`参数来加密私钥文件，防止私钥泄露导致的中间人攻击。
+
+```
+[root@controller tls]# openssl req -x509 -new -key root/private/root.key \
+  -passin pass:MyRootPass123! \
+  -days 7300 -sha384 \
+  -subj "/C=CN/ST=Guangdong/O=SEIG CA/CN=MyRoot CA" \#证书主题信息
+  -addext "basicConstraints=critical,CA:TRUE" \    #声明这是 CA 证书
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \# keyCertSign允许签发证书cRLSign允许签发证书吊销列表
+  -out root/certs/root.crt
+```
+
+**生成根ca自签名证书**: `-x509`参数用来生成自签名证书 ，`-days 7300`有效期我设置成了20年，`subj`按需修改就好，完毕后一定要做备份，最好是存储在加密 U 盘等安全离线介质里
+
+![image-20250326001742363](C:\Users\liulu\AppData\Roaming\Typora\typora-user-images\image-20250326001742363.png)
+
+可以看到CA:TRUE确实被识别为CA证书，以及证书的颁发者信息
+
+### 步骤二：中间层CA证书
+
+```
+[root@controller tls]# openssl genrsa -aes256  -out intermediate/private/intermediate.key 4096
+Enter PEM pass phrase:
+Verifying - Enter PEM pass phrase:
+[root@controller tls]# openssl req -new -key intermediate/private/intermediate.key \
+  -subj "/C=CN/ST=Guangdong/O=SEIG CA/CN=My Intermediate CA" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \#pathlen:0禁止该中间 CA 签发下级 CA
+  -out intermediate/csr/intermediate.csr
+Enter pass phrase for intermediate/private/intermediate.key:
+```
+
+**生成中间层私钥和CSR签名请求**:私钥可以参考我前面的描述，CSR说白了就是用于申请证书的请求文件，用来提交给ca验证申请者的域名所有权和组织信息，从而签发证书。
+
+```
+[root@controller Intermediate]# openssl x509 -req -days 3650 -sha512   -CA ../Root/rootCA.crt   -CAkey ../Root/rootCA.key   -CAcreateserial   -extensions v3_intermediate_ca   -in intermediateCA.csr   -out intermediateCA.crt
+Warning: ignoring -extensions option without -extfile
+Certificate request self-signature ok
+subject=C=CN, ST=Guangdong, L=Guangzhou, O=SEIG, OU=Superman, CN=MyIntermediate CA
+Enter pass phrase for ../Root/rootCA.key:
+[root@controller Intermediate]# ll
+总用量 16
+-rw-r--r--. 1 root root 2029  3月 25 07:11 intermediateCA.crt
+-rw-r--r--. 1 root root 1712  3月 25 07:08 intermediateCA.csr
+-rw-------. 1 root root 3446  3月 25 05:52 intermediateCA.key
+```
+
+**使用根证书签发中间CA证书**：`-extensions v3_intermediate_ca`参数用来约束中间层ca禁止签发下级 CA，这样可以有效地控制证书的用途和安全约束
+
+```
+[root@controller Intermediate]# cat intermediateCA.crt ../Root/rootCA.crt > intermediateCA-chain.crt
+```
+
+**创建中间 CA 证书链文件**：这里要说下证书链文件，一开始我也没搞懂证书链的作用，以及为什么需要这样的文件，其实仔细捋一下就可以思考明白，我们的客户端可能只信任根 CA，但终端实体证书却是由中间 CA 签发，因此需要中间 CA 和根 CA 的证书链来连接信任，从而确保了客户端（如浏览器、Docker 或其他服务）能够验证证书的合法性，所以我们必须添加一个**中间 CA 的证书链文件**将信任链从 **终端实体证书**（如服务器证书）逐级传递到 **根 CA** 的关键文件
+
+**验证链文件格式**，可以看到两个证书的签发机构都是都是我们的ca根证书，所以说客户端可以通过我们链文件的 `Issuer` 信息逐级追溯，直到找到受信任的根 CA
+
+![image-20250325071920068](C:\Users\liulu\AppData\Roaming\Typora\typora-user-images\image-20250325071920068.png)
+
+
+
+
+
+### **步骤 3：签发终端实体证书**
+
+```
+[root@controller liulu.harbor.com]# openssl genrsa -out liulu.harbor.com.key 4096
+[root@controller liulu.harbor.com]# openssl req -new -sha512 \
+  -subj "/C=CN/ST=Guangdong/L=Guangzhou/O=SEIG/OU=superman/CN=liulu.harbor.com" \
+  -key liulu.harbor.com.key \
+  -out liulu.harbor.com.csr
+```
+
+**生成服务器私钥和请求文件**：key和csr，注意这里在生成key的时候，不同于中间层和根证书，我在终端层没有用`-aes256`参数，因为`-aes256`属性为每当服务需要读取私钥文件时（如 Nginx 启动、SSL 握手等），必须提供密码，也就是说每次启动依赖该密钥的服务时候都需要输入其加密密码，这未免有些太过复杂，也增加了运维复杂度，所以在这里选择了不加密，
+
+**`-aes256`**的应用场景
+
+| 场景                    | 是否需要输入密码？     | 示例                                                   |
+| :---------------------- | :--------------------- | :----------------------------------------------------- |
+| 服务启动（如 Nginx）    | ✔️ 需要                 | `systemctl start nginx` → 提示输入私钥密码             |
+| 证书自动续期（Certbot） | ✔️ 需要                 | 续期脚本需通过 `--passphrase` 参数或交互式终端提供密码 |
+| HTTPS 请求处理          | ❌ 不需要               | 服务运行后私钥已解密，处理请求时无需密码               |
+| 私钥文件被其他进程读取  | ✔️ 需要（如重启服务时） | 重新加载配置（`nginx -s reload`）会再次触发密码验证    |
+
+
+
+```
+cat > v3.ext <<-EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE   #声明是否为 CA 证书（此处 CA:FALSE 表示终端实体证书）
+keyUsage=digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment#定义密钥用途（如签名、加密）
+subjectAltName=@alt_names  #定义 SAN 列表，可包含 DNS 域名、IP 地址等
+
+[alt_names]#域名和IP条目
+DNS.1 = k8s.harbor.com
+DNS.2 = liulu.harbor.com
+IP.1 = 192.168.241.102
+EOF
+```
+
+**创建 SAN 扩展文件** (`v3.ext`)这里写了一个SAN扩展文件用于在 SSL/TLS 证书中定义 **Subject Alternative Name**，SAN 扩展允许一个证书支持多个域名、子域名、IP 地址或其他标识符，从而解决传统证书只能通过 `Common Name (CN)` 字段绑定单个域名的问题。
+
+```
+[root@controller liulu.harbor.com]# openssl x509 -req -sha512 -days 365 \
+  -CA /opt/tls/Intermediate/intermediateCA.crt -CAkey /opt/tls/Intermediate/intermediateCA.key -CAcreateserial \
+  -extfile v3.ext \
+  -in liulu.harbor.com.csr \
+  -out liulu.harbor.com.crt
+Certificate request self-signature ok
+subject=C=CN, ST=Guangdong, L=Guangzhou, O=SEIG, OU=superman, CN=liulu.harbor.com
+Enter pass phrase for /opt/tls/Intermediate/intermediateCA.key:
+[root@controller liulu.harbor.com]# cat liulu.harbor.com.crt /opt/tls/Intermediate/intermediateCA.crt /opt/tls/Root/rootCA.crt > chain.liulu.harbor.com.crt
+
+```
+
+**生成服务器证书**和创建完整证书链文件
+
+到这里终端证书算是签发完毕了，后续k8s直接创建一个secret去应用就OK了
