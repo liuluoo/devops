@@ -14,22 +14,22 @@ pipeline {
         DOCKER_CREDENTIAL_ID = 'harbor-user-pass'
         GIT_REPO_URL = 'liulu.gitlab.com'
         GIT_CREDENTIAL_ID = 'git-user-pass'
-        GIT_ACCOUNT = 'root'
+        GIT_ACCOUNT = 'root' // change me
         REGISTRY = 'liulu.harbor.com'
-        DOCKERHUB_NAMESPACE = 'devops'
+        DOCKERHUB_NAMESPACE = 'devops' // change me
         APP_NAME = 'k8s-cicd-demo'
-        // 定义命名空间变量
-        DEV_NAMESPACE = 'devops-dev'
-        PROD_NAMESPACE = 'devops-production'
-        KUBECONFIG_CREDENTIAL_ID  = 'k8s-cluster-config'
     }
 
     stages {
+
+
         stage('unit test') {
             steps {
                 sh 'mvn clean test'
             }
         }
+
+
 
         stage('build & push') {
             steps {
@@ -51,31 +51,28 @@ pipeline {
 
         stage('deploy to dev') {
             steps {
+                input(id: 'deploy-to-dev', message: 'deploy to dev?')
                 sh '''
-                    # 创建开发命名空间（如果不存在）
-                    kubectl create namespace $DEV_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
-
-                    # 部署应用到开发环境
+                    kubectl create namespace devops-dev
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#BUILD_NUMBER#$BUILD_NUMBER#" deploy/cicd-demo-dev.yaml
-                    kubectl apply -f deploy/cicd-demo-dev.yaml -n $DEV_NAMESPACE
-
-                    # 验证部署状态
-                    kubectl rollout status deployment/$APP_NAME -n $DEV_NAMESPACE --timeout=300s
+                    kubectl apply -f deploy/cicd-demo-dev.yaml
                 '''
             }
         }
-
         stage('push with tag') {
             when {
-                expression { return params.TAG_NAME =~ /v.*/ }
+                expression {
+                    return params.TAG_NAME =~ /v.*/
+                }
             }
             steps {
+                input(id: 'release-image-with-tag', message: 'release image with tag?')
                 withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                    sh 'git config --global user.email "liulu@gitlab.cn" '
-                    sh 'git config --global user.name "liulu" '
+                    sh 'git config --global user.email "liugang@wolfcode.cn" '
+                    sh 'git config --global user.name "xiaoliu" '
                     sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
                     sh 'git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --tags --ipv4'
                 }
@@ -83,25 +80,21 @@ pipeline {
                 sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
             }
         }
-
         stage('deploy to production') {
             when {
-                expression { return params.TAG_NAME =~ /v.*/ }
+                expression {
+                    return params.TAG_NAME =~ /v.*/
+                }
             }
             steps {
+                input(id: 'deploy-to-production', message: 'deploy to production?')
                 sh '''
-                    # 创建生产命名空间（如果不存在）
-                    kubectl create namespace $PROD_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
-
-                    # 部署应用到生产环境
+                    kubectl create namespace devops-production
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo.yaml
                     sed -i'' "s#TAG_NAME#$TAG_NAME#" deploy/cicd-demo.yaml
-                    kubectl apply -f deploy/cicd-demo.yaml -n $PROD_NAMESPACE
-
-                    # 验证部署状态
-                    kubectl rollout status deployment/$APP_NAME -n $PROD_NAMESPACE --timeout=300s
+                    kubectl apply -f deploy/cicd-demo.yaml
                 '''
             }
         }
