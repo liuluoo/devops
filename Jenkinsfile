@@ -7,7 +7,7 @@ pipeline {
 
     parameters {
         gitParameter name: 'BRANCH_NAME', branch: '', branchFilter: '.*', defaultValue: 'origin/master', description: '请选择要发布的分支', quickFilterEnabled: false, selectedValue: 'NONE', tagFilter: '*', type: 'PT_BRANCH'
-        string(name: 'TAG_NAME', defaultValue: 'snapshot', description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
+        string(name: 'TAG_NAME', defaultValue: 'v1', description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
     }
 
     environment {
