@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-service
+  namespace: devops
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/path: /
+    prometheus.io/port: '8080'
+spec:
+  selector:
+    app: jenkins-server
+  type: ClusterIP  # 内部集群访问
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jenkins-ingress
+  namespace: devops
+  annotations:
+    # 后端协议（保持 HTTP）
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+
+    # 上传文件大小限制
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+    # 重定向配置（关键修复点）
+    nginx.ingress.kubernetes.io/proxy-redirect-from: "http://jenkins-service.devops.svc.cluster.local:8080/"
+    nginx.ingress.kubernetes.io/proxy-redirect-to: "https://$host/"
+
+    # 替换 configuration-snippet 为安全方式（修复风险警告）
+    nginx.ingress.kubernetes.io/proxy-set-headers: |
+      X-Forwarded-Proto $scheme
+      X-Forwarded-Host $host
+      X-Forwarded-Port $server_port
+
+    # HTTPS 强制跳转
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # 路径重写（如果不需要可移除）
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - liulu.jenkins.com
+    secretName: jenkins-tls  # 确保证书合法且域名匹配
+  rules:
+  - host: liulu.jenkins.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jenkins-service
+            port:
+              number: 8080

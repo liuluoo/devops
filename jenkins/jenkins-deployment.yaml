@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: devops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins-server
+  template:
+    metadata:
+      labels:
+        app: jenkins-server
+    spec:
+      serviceAccountName: jenkins-admin
+      imagePullSecrets: 
+        - name: harbor-secret # harbor 访问 secret
+      containers:
+        - name: jenkins
+          image: liulu.harbor.com/devops/myjenkins-jdk21-maven3.9.7:v1
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+            runAsUser: 0 # 使用 root 用户运行容器
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+            requests:
+              memory: "500Mi"
+              cpu: "500m"
+          ports:
+            - name: httpport
+              containerPort: 8080
+            - name: jnlpport
+              containerPort: 50000
+          livenessProbe:
+            httpGet:
+              path: "/login"
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: "/login"
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+            - name: docker
+              mountPath: /run/docker.sock #映射主机的docker接口给jenkins
+            - name: docker-home
+              mountPath: /usr/bin/docker
+            - name: mvn-setting
+              mountPath: /usr/local/apache-maven-3.9.7/conf/settings.xml
+              subPath: settings.xml
+            - name: daemon
+              mountPath: /etc/docker/daemon.json
+              subPath: daemon.json
+            - name: kubectl
+              mountPath: /usr/bin/kubectl
+            - name: ca-cert-volume
+              mountPath: /usr/local/share/ca-certificates/
+              readOnly: true
+      volumes:
+        - name: kubectl
+          hostPath:
+            path: /usr/bin/kubectl
+        - name: jenkins-data
+          persistentVolumeClaim:
+              claimName: jenkins-pvc
+        - name: docker
+          hostPath:
+            path: /run/docker.sock # 将主机的 docker 映射到容器中
+        - name: docker-home
+          hostPath:
+            path: /usr/bin/docker
+        - name: mvn-setting
+          configMap:
+            name: mvn-settings
+            items:
+            - key: settings.xml
+              path: settings.xml
+        - name: daemon
+          hostPath: 
+            path: /etc/docker/
+        - name: ca-cert-volume
+          configMap:
+            name: ca-cert-configmap
+
