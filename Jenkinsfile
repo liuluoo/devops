@@ -51,20 +51,20 @@ pipeline {
 
         stage('deploy to dev') {
             steps {
-                container('kubectl') {
-                    withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIAL_ID, variable: 'KUBECONFIG_FILE')]) {
-                        sh '''
-                            # 合并kubeconfig
-                            mkdir -p ~/.kube
-                            cp ${KUBECONFIG_FILE} ~/.kube/config
-                            chmod 600 ~/.kube/config
+                sh '''
+                    # 创建开发命名空间（如果不存在）
+                    kubectl create namespace $DEV_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
 
-                            # 执行部署命令
-                            kubectl create namespace $DEV_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
-                            kubectl apply -f deploy/deploy-processed.yaml -n $DEV_NAMESPACE
-                        '''
-                    }
-                }
+                    # 部署应用到开发环境
+                    sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
+                    sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
+                    sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo-dev.yaml
+                    sed -i'' "s#BUILD_NUMBER#$BUILD_NUMBER#" deploy/cicd-demo-dev.yaml
+                    kubectl apply -f deploy/cicd-demo-dev.yaml -n $DEV_NAMESPACE
+
+                    # 验证部署状态
+                    kubectl rollout status deployment/$APP_NAME -n $DEV_NAMESPACE --timeout=300s
+                '''
             }
         }
 
