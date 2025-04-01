@@ -53,7 +53,7 @@ pipeline {
 
         stage('deploy to dev') {
             steps {
-                input(id: 'deploy-to-dev', message: 'deploy to dev?')
+
                 sh '''
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
@@ -70,10 +70,10 @@ pipeline {
                 }
             }
             steps {
-                input(id: 'release-image-with-tag', message: 'release image with tag?')
+
                 withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                    sh 'git config --global user.email "liugang@wolfcode.cn" '
-                    sh 'git config --global user.name "xiaoliu" '
+                    sh 'git config --global user.email "liulu@gitlab.cn" '
+                    sh 'git config --global user.name "liulu" '
                     sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
                     sh 'git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --tags --ipv4'
                 }
@@ -88,7 +88,7 @@ pipeline {
                 }
             }
             steps {
-                input(id: 'deploy-to-production', message: 'deploy to production?')
+
                 sh '''
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
