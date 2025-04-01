@@ -52,7 +52,6 @@ pipeline {
         stage('deploy to dev') {
             steps {
                 sh '''
-                    kubectl create namespace devops-dev
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo-dev.yaml
@@ -86,7 +85,7 @@ pipeline {
             }
             steps {
                 sh '''
-                    kubectl create namespace devops-production
+                   
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo.yaml
