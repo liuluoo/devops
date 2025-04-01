@@ -6,64 +6,43 @@ pipeline {
     }
 
     parameters {
-        gitParameter name: 'BRANCH_NAME',
-                     branch: '',
-                     branchFilter: '.*',
-                     defaultValue: 'origin/master',
-                     description: '请选择要发布的分支',
-                     quickFilterEnabled: false,
-                     selectedValue: 'NONE',
-                     tagFilter: '*',
-                     type: 'PT_BRANCH'
-        string(name: 'TAG_NAME',
-               defaultValue: 'snapshot',
-               description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
+        gitParameter name: 'BRANCH_NAME', branch: '', branchFilter: '.*', defaultValue: 'origin/master', description: '请选择要发布的分支', quickFilterEnabled: false, selectedValue: 'NONE', tagFilter: '*', type: 'PT_BRANCH'
+        string(name: 'TAG_NAME', defaultValue: 'snapshot', description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
     }
 
     environment {
         DOCKER_CREDENTIAL_ID = 'harbor-user-pass'
         GIT_REPO_URL = 'liulu.gitlab.com'
         GIT_CREDENTIAL_ID = 'git-user-pass'
-        GIT_ACCOUNT = 'root'
+        GIT_ACCOUNT = 'root' // change me
         REGISTRY = 'liulu.harbor.com'
-        DOCKERHUB_NAMESPACE = 'devops' // 根据实际修改
+        DOCKERHUB_NAMESPACE = 'devops' // change me
         APP_NAME = 'k8s-cicd-demo'
+
     }
 
     stages {
-        // 新增：清理 Maven 缓存
-        stage('Clean Maven Cache') {
-            steps {
-                sh '''
-                    echo "清理 plexus-compiler 缓存..."
-                    rm -rf ~/.m2/repository/org/codehaus/plexus/plexus-compiler-*
-                '''
-            }
-        }
 
-        stage('unit 测试') {
+
+
+        stage('unit test') {
             steps {
                 sh 'mvn clean test'
             }
         }
 
+
+
         stage('build & push') {
             steps {
-                // 强制更新依赖并构建
-                sh 'mvn clean package -U'  // 添加 -U 参数
-
+                sh 'mvn clean package -DskipTests'
                 sh 'docker build -f Dockerfile -t $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER .'
-                withCredentials([usernamePassword(
-                    passwordVariable: 'DOCKER_PASSWORD',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    credentialsId: "$DOCKER_CREDENTIAL_ID"
-                )]) {
+                withCredentials([usernamePassword(passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME', credentialsId: "$DOCKER_CREDENTIAL_ID",)]) {
                     sh 'echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin'
                     sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER'
                 }
             }
         }
-
 
         stage('push latest') {
             steps {
@@ -76,7 +55,6 @@ pipeline {
             steps {
                 input(id: 'deploy-to-dev', message: 'deploy to dev?')
                 sh '''
-
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo-dev.yaml
@@ -85,47 +63,33 @@ pipeline {
                 '''
             }
         }
-
         stage('push with tag') {
+            when {
+                expression {
+                    return params.TAG_NAME =~ /v.*/
+                }
+            }
             steps {
                 input(id: 'release-image-with-tag', message: 'release image with tag?')
-                withCredentials([usernamePassword(
-                    credentialsId: "$GIT_CREDENTIAL_ID",
-                    passwordVariable: 'GIT_PASSWORD',
-                    usernameVariable: 'GIT_USERNAME'
-                )]) {
-                    // 配置 Git 用户信息
-                    sh 'git config --global user.email "liulu@git.cn"'
-                    sh 'git config --global user.name "liulu"'
-
-                    // 检查并删除已存在的本地标签
-                    sh '''
-                        if git tag --list | grep -q "snapshot"; then
-                            git tag -d snapshot
-                        fi
-                    '''
-
-                    // 删除远程标签
-                    sh "git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --delete snapshot"
-
-                    // 重新创建新的标签
-                    sh 'git tag -a snapshot -m "snapshot"'
-
-                    // 推送新的标签到远程仓库
-                    sh "git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git snapshot"
+                withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                    sh 'git config --global user.email "liugang@wolfcode.cn" '
+                    sh 'git config --global user.name "xiaoliu" '
+                    sh 'git tag -a $TAG_NAME -m "$TAG_NAME" '
+                    sh 'git push http://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --tags --ipv4'
                 }
-
-                // 打标签并推送镜像
                 sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
                 sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
             }
         }
-
         stage('deploy to production') {
+            when {
+                expression {
+                    return params.TAG_NAME =~ /v.*/
+                }
+            }
             steps {
                 input(id: 'deploy-to-production', message: 'deploy to production?')
                 sh '''
-
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo.yaml
