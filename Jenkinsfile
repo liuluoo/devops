@@ -14,24 +14,21 @@ pipeline {
         DOCKER_CREDENTIAL_ID = 'harbor-user-pass'
         GIT_REPO_URL = 'liulu.gitlab.com'
         GIT_CREDENTIAL_ID = 'git-user-pass'
-        GIT_ACCOUNT = 'root' // change me
+        GIT_ACCOUNT = 'root'
         REGISTRY = 'liulu.harbor.com'
-        DOCKERHUB_NAMESPACE = 'devops' // change me
+        DOCKERHUB_NAMESPACE = 'devops'
         APP_NAME = 'k8s-cicd-demo'
-
+        // 定义命名空间变量
+        DEV_NAMESPACE = 'devops-dev'
+        PROD_NAMESPACE = 'devops-production'
     }
 
     stages {
-
-
-
         stage('unit test') {
             steps {
                 sh 'mvn clean test'
             }
         }
-
-
 
         stage('build & push') {
             steps {
@@ -53,24 +50,28 @@ pipeline {
 
         stage('deploy to dev') {
             steps {
-
                 sh '''
+                    # 创建开发命名空间（如果不存在）
+                    kubectl create namespace $DEV_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+                    # 部署应用到开发环境
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo-dev.yaml
                     sed -i'' "s#BUILD_NUMBER#$BUILD_NUMBER#" deploy/cicd-demo-dev.yaml
-                    kubectl apply -f deploy/cicd-demo-dev.yaml
+                    kubectl apply -f deploy/cicd-demo-dev.yaml -n $DEV_NAMESPACE
+
+                    # 验证部署状态
+                    kubectl rollout status deployment/$APP_NAME -n $DEV_NAMESPACE --timeout=300s
                 '''
             }
         }
+
         stage('push with tag') {
             when {
-                expression {
-                    return params.TAG_NAME =~ /v.*/
-                }
+                expression { return params.TAG_NAME =~ /v.*/ }
             }
             steps {
-
                 withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
                     sh 'git config --global user.email "liulu@gitlab.cn" '
                     sh 'git config --global user.name "liulu" '
@@ -81,20 +82,25 @@ pipeline {
                 sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
             }
         }
+
         stage('deploy to production') {
             when {
-                expression {
-                    return params.TAG_NAME =~ /v.*/
-                }
+                expression { return params.TAG_NAME =~ /v.*/ }
             }
             steps {
-
                 sh '''
+                    # 创建生产命名空间（如果不存在）
+                    kubectl create namespace $PROD_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+                    # 部署应用到生产环境
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
                     sed -i'' "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
                     sed -i'' "s#APP_NAME#$APP_NAME#" deploy/cicd-demo.yaml
                     sed -i'' "s#TAG_NAME#$TAG_NAME#" deploy/cicd-demo.yaml
-                    kubectl apply -f deploy/cicd-demo.yaml
+                    kubectl apply -f deploy/cicd-demo.yaml -n $PROD_NAMESPACE
+
+                    # 验证部署状态
+                    kubectl rollout status deployment/$APP_NAME -n $PROD_NAMESPACE --timeout=300s
                 '''
             }
         }
