@@ -51,7 +51,6 @@ pipeline {
 
         stage('deploy to dev') {
             steps {
-                input(id: 'deploy-to-dev', message: 'deploy to dev?')
                 sh '''
                     kubectl create namespace devops-dev
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
@@ -69,7 +68,6 @@ pipeline {
                 }
             }
             steps {
-                input(id: 'release-image-with-tag', message: 'release image with tag?')
                 withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
                     sh 'git config --global user.email "liugang@wolfcode.cn" '
                     sh 'git config --global user.name "xiaoliu" '
@@ -87,7 +85,6 @@ pipeline {
                 }
             }
             steps {
-                input(id: 'deploy-to-production', message: 'deploy to production?')
                 sh '''
                     kubectl create namespace devops-production
                     sed -i'' "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
