@@ -1,41 +1,13 @@
 pipeline {
     agent {
         kubernetes {
-            label 'maven'  // 确保Jenkins配置了名为'maven'的Kubernetes Pod模板
-            yaml """
-            apiVersion: v1
-            kind: Pod
-            spec:
-              containers:
-              - name: jnlp
-                image: jenkins/inbound-agent:4.11-1
-                resources:
-                  limits:
-                    cpu: 500m
-                    memory: 512Mi
-              - name: maven  // 必须包含构建工具容器
-                image: maven:3.8.6-jdk-11
-                command: ['cat']
-                tty: true
-                resources:
-                  limits:
-                    cpu: 1000m
-                    memory: 2Gi
-            """
+            label 'maven'
         }
     }
 
     parameters {
-        gitParameter name: 'BRANCH_NAME',
-                     branch: '',
-                     branchFilter: '.*',
-                     defaultValue: 'origin/master',
-                     description: '请选择要发布的分支',
-                     type: 'PT_BRANCH'
-
-        string(name: 'TAG_NAME',
-               defaultValue: 'snapshot',
-               description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
+        gitParameter name: 'BRANCH_NAME', branch: '', branchFilter: '.*', defaultValue: 'origin/master', description: '请选择要发布的分支', quickFilterEnabled: false, selectedValue: 'NONE', tagFilter: '*', type: 'PT_BRANCH'
+        string(name: 'TAG_NAME', defaultValue: 'snapshot', description: '标签名称，必须以 v 开头，例如：v1、v1.0.0')
     }
 
     environment {
@@ -46,120 +18,90 @@ pipeline {
         REGISTRY = 'liulu.harbor.com'
         DOCKERHUB_NAMESPACE = 'devops'
         APP_NAME = 'k8s-cicd-demo'
+        DEV_NAMESPACE = 'devops-dev'
+        PROD_NAMESPACE = 'devops-production'
+        KUBECONFIG_CREDENTIAL_ID = 'k8s-cluster-config'
     }
 
     stages {
-        stage('Checkout') {
+        stage('unit test') {
             steps {
-                checkout scm  // 必须添加代码检出步骤
+                sh 'mvn clean test'
             }
         }
 
-        stage('Unit Test') {
+        stage('build & push') {
             steps {
-                container('maven') {  // 明确指定在maven容器中执行
-                    sh 'mvn clean test'
+                sh 'mvn clean package -DskipTests'
+                sh 'docker build -f Dockerfile -t $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER .'
+                withCredentials([usernamePassword(passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME', credentialsId: "$DOCKER_CREDENTIAL_ID")]) {
+                    sh 'echo "$DOCKER_PASSWORD" | docker login $REGISTRY -u "$DOCKER_USERNAME" --password-stdin'
+                    sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER'
                 }
             }
         }
 
-        stage('Build & Push') {
+        stage('push latest') {
             steps {
-                container('maven') {
-                    sh 'mvn clean package -DskipTests'
-                    script {
-                        // 使用脚本块避免变量解析问题
-                        def imageName = "${REGISTRY}/${DOCKERHUB_NAMESPACE}/${APP_NAME}:SNAPSHOT-${BUILD_NUMBER}"
-                        sh "docker build -f Dockerfile -t ${imageName} ."
-
-                        withCredentials([usernamePassword(
-                            credentialsId: env.DOCKER_CREDENTIAL_ID,
-                            usernameVariable: 'DOCKER_USERNAME',
-                            passwordVariable: 'DOCKER_PASSWORD'
-                        )]) {
-                            sh """
-                                echo "\$DOCKER_PASSWORD" | docker login ${REGISTRY} -u "\$DOCKER_USERNAME" --password-stdin
-                                docker push ${imageName}
-                            """
-                        }
-                    }
-                }
+                sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:latest'
+                sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:latest'
             }
         }
 
-        stage('Push Latest') {
+        stage('deploy to dev') {
             steps {
-                container('maven') {
-                    script {
-                        sh """
-                            docker tag ${REGISTRY}/${DOCKERHUB_NAMESPACE}/${APP_NAME}:SNAPSHOT-${BUILD_NUMBER} \
-                                ${REGISTRY}/${DOCKERHUB_NAMESPACE}/${APP_NAME}:latest
-                            docker push ${REGISTRY}/${DOCKERHUB_NAMESPACE}/${APP_NAME}:latest
-                        """
-                    }
-                }
+                sh '''
+                    # 创建开发命名空间（如果不存在）
+                    kubectl create namespace $DEV_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+                    # 部署应用到开发环境
+                    sed -i "s#REGISTRY#$REGISTRY#" deploy/cicd-demo-dev.yaml
+                    sed -i "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo-dev.yaml
+                    sed -i "s#APP_NAME#$APP_NAME#" deploy/cicd-demo-dev.yaml
+                    sed -i "s#BUILD_NUMBER#$BUILD_NUMBER#" deploy/cicd-demo-dev.yaml
+                    kubectl apply -f deploy/cicd-demo-dev.yaml -n $DEV_NAMESPACE
+
+                    # 验证部署状态
+                    kubectl rollout status deployment/$APP_NAME -n $DEV_NAMESPACE --timeout=300s
+                '''
             }
         }
 
-        stage('Deploy to Dev') {
-            steps {
-                container('maven') {
-                    sh """
-                        sed -i.bak "s#REGISTRY#${REGISTRY}#g" deploy/cicd-demo-dev.yaml
-                        sed -i.bak "s#DOCKERHUB_NAMESPACE#${DOCKERHUB_NAMESPACE}#g" deploy/cicd-demo-dev.yaml
-                        sed -i.bak "s#APP_NAME#${APP_NAME}#g" deploy/cicd-demo-dev.yaml
-                        sed -i.bak "s#BUILD_NUMBER#${BUILD_NUMBER}#g" deploy/cicd-demo-dev.yaml
-                        kubectl apply -f deploy/cicd-demo-dev.yaml
-                    """
-                }
-            }
-        }
-
-        stage('Push with Tag') {
+        stage('push with tag') {
             when {
-                expression {
-                    return params.TAG_NAME ==~ /v.*/
-                }
+                expression { return params.TAG_NAME =~ /v.*/ }
             }
             steps {
-                container('maven') {
-                    withCredentials([usernamePassword(
-                        credentialsId: env.GIT_CREDENTIAL_ID,
-                        usernameVariable: 'GIT_USERNAME',
-                        passwordVariable: 'GIT_PASSWORD'
-                    )]) {
-                        sh """
-                            git config --global user.email "liulu@gitlab.cn"
-                            git config --global user.name "liulu"
-                            git tag -a ${params.TAG_NAME} -m "${params.TAG_NAME}"
-                            git push https://${GIT_USERNAME}:${GIT_PASSWORD}@${GIT_REPO_URL}/${GIT_ACCOUNT}/k8s-cicd-demo.git --tags --ipv4
-                        """
-                    }
-                    sh """
-                        docker tag ${REGISTRY}/${DOCKERHUB_NAMESPACE}/${APP_NAME}:SNAPSHOT-${BUILD_NUMBER} \
-                            ${REGISTRY}/${DOCKERHUB_NAMESPACE}/${APP_NAME}:${params.TAG_NAME}
-                        docker push ${REGISTRY}/${DOCKERHUB_NAMESPACE}/${APP_NAME}:${params.TAG_NAME}
-                    """
+                withCredentials([usernamePassword(credentialsId: "$GIT_CREDENTIAL_ID", passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
+                    sh 'git config --global user.email "liulu@gitlab.cn"'
+                    sh 'git config --global user.name "liulu"'
+                    sh 'git tag -a $TAG_NAME -m "$TAG_NAME"'
+                    sh "git push https://$GIT_USERNAME:$GIT_PASSWORD@$GIT_REPO_URL/$GIT_ACCOUNT/k8s-cicd-demo.git --tags --ipv4"
                 }
+                sh 'docker tag $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:SNAPSHOT-$BUILD_NUMBER $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
+                sh 'docker push $REGISTRY/$DOCKERHUB_NAMESPACE/$APP_NAME:$TAG_NAME'
             }
         }
 
-        stage('Deploy to Production') {
+        stage('deploy to production') {
             when {
-                expression {
-                    return params.TAG_NAME ==~ /v.*/
-                }
+                expression { return params.TAG_NAME =~ /v.*/ }
             }
             steps {
-                container('maven') {
-                    sh """
-                        sed -i.bak "s#REGISTRY#${REGISTRY}#g" deploy/cicd-demo.yaml
-                        sed -i.bak "s#DOCKERHUB_NAMESPACE#${DOCKERHUB_NAMESPACE}#g" deploy/cicd-demo.yaml
-                        sed -i.bak "s#APP_NAME#${APP_NAME}#g" deploy/cicd-demo.yaml
-                        sed -i.bak "s#TAG_NAME#${params.TAG_NAME}#g" deploy/cicd-demo.yaml
-                        kubectl apply -f deploy/cicd-demo.yaml
-                    """
-                }
+                sh '''
+                    # 创建生产命名空间（如果不存在）
+                    kubectl create namespace $PROD_NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+                    # 部署应用到生产环境
+                    sed -i "s#REGISTRY#$REGISTRY#" deploy/cicd-demo.yaml
+                    sed -i "s#DOCKERHUB_NAMESPACE#$DOCKERHUB_NAMESPACE#" deploy/cicd-demo.yaml
+                    sed -i "s#APP_NAME#$APP_NAME#" deploy/cicd-demo.yaml
+                    sed -i "s#TAG_NAME#$TAG_NAME#" deploy/cicd-demo.yaml
+                    kubectl apply -f deploy/cicd-demo.yaml -n $PROD_NAMESPACE
+
+                    # 验证部署状态
+                    kubectl rollout status deployment/$APP_NAME -n $PROD_NAMESPACE --timeout=300s
+                '''
             }
         }
     }
